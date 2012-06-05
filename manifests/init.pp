@@ -37,5 +37,6 @@
 #
 class ldap_entry {
 
+  package { 'net-ldap': ensure => present, provider => gem }
 
 }

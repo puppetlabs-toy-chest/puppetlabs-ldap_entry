@@ -31,6 +31,7 @@ module Puppet
         This is most likely localthost but since we seldom put localhost into
         a SSL certificate as a valid name this should be a FQDN."
 
+      isrequired
     end
 
     newparam(:port) do
@@ -40,10 +41,18 @@ module Puppet
         defaultto 10636
     end
 
-    newproperty(:objectclass) do
-      desc "The list of objectclasses that are to be present in the entry."
+    newparam(:entry_management) do
+      desc "Designates how we treat the syncronization of the enty we are currently
+        managing.  Used by the provider to determine if the entry is truth or
+        additive, inclusive or minimal."
 
-      isrequired
+      newvalues(:inclusive, :minimal)
+
+      defaultto :minimal
+    end
+
+    newproperty(:objectclass, :array_matching => :all) do
+      desc "The list of objectclasses that are to be present in the entry."
 
       # Have to redefine should= here so we can sort the array that is given to
       # us by the manifest.
@@ -51,12 +60,69 @@ module Puppet
         super
         @should.sort!
       end
+
+      # Overriding insync? so we can instead of comparing the entire array of is and
+      # should, we really just want to know if all the should values are present
+      # in the is.  This is primarily to support minimal attribute management mode.
+      def insync?(is)
+        case @resource[:entry_management]
+        when :inclusive
+          super
+        when :minimal
+          synced = true
+          provider.objectclass_to_update = Array.new
+          @should[0].each do |v|
+            unless is.include?(v)
+              synced = false
+              provider.objectclass_to_update << v
+            end
+          end
+          synced
+        end
+      end
+
+      isrequired
     end
 
     newproperty(:attributes) do
       desc "A set of attributes that needs to be synced for ldap_entry."
 
+      # Historically people have a tendency to use camel case attribute names
+      # in LDAP entries but LDAP is in fact case-insensitive and some libraries
+      # return all lowercase attributes names.  To make is and should comparisons
+      # work we need to make sure all hash keys are downcased.
+      munge do |value|
+        new_hash = Hash.new
+        value.each do |k, v|
+          new_hash[k.downcase] = value[k].to_a
+        end
+        new_hash
+      end
+
+      # Overriding insync? so we can instead of comparing the entire hash of is and
+      # should, we really just want to know if all the should values are present
+      # in the is.  This is primarily to support minimal attribute management mode.
+      def insync?(is)
+        synced = true
+        provider.attributes_to_update = Hash.new
+        @should[0].each do |k, v|
+          unless is[k] == v
+            synced = false
+            provider.attributes_to_update[k] = v
+          end
+        end
+        synced
+      end
+
       isrequired
+    end
+
+    newparam(:context) do
+      desc 'One needs to handle a context entry differently than the others'
+
+      newvalues(:true, :false)
+
+      defaultto :false
     end
   end
 end
