@@ -108,13 +108,21 @@ module Puppet
         @should[0].each do |k, v|
           unless is[k] == v
             synced = false
-            provider.to_update[k] = v
+            provider.attributes_to_update[k] = v
           end
         end
         synced
       end
 
       isrequired
+    end
+
+    newparam(:context) do
+      desc 'One needs to handle a context entry differently than the others'
+
+      newvalues(:true, :false)
+
+      defaultto :false
     end
   end
 end
